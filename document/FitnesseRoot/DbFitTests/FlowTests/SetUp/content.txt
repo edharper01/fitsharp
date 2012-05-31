@@ -1,3 +1,5 @@
 !|dbfit.SqlServerTest|
 
-!|Connect|(local)|fituser|fituser|dbfit|
+Connect|(local)|fituser|fituser|dbfit|
+
+!|Connect|Data Source=localhost;Initial Catalog=DBFitTests1;Integrated Security=SSPI;|

@@ -1,4 +1,4 @@
-﻿// Copyright © 2010 Syterra Software Inc. All rights reserved.
+﻿// Copyright © 2012 Syterra Software Inc. All rights reserved.
 // The use and distribution terms for this software are covered by the Common Public License 1.0 (http://opensource.org/licenses/cpl.php)
 // which can be found in the file license.txt at the root of this distribution. By using this software in any fashion, you are agreeing
 // to be bound by the terms of this license. You must not remove this notice, or any other, from this software.
@@ -9,80 +9,84 @@ using System.Text;
 namespace fitSharp.Parser {
     public class Characters {
         public const string TextStoryTestBegin = "test@";
-        readonly string input;
-        int next;
-        int length;
-        int start;
+        Substring current;
+
+        public bool AtEnd { get { return current.AtEnd; } }
 
         public CharacterType Type { get; private set; }
-        public string Content { get { return length == 0 ? string.Empty : input.Substring(next, length); } }
-        public string FromStart {
-            get {
-                if (next <= start) return string.Empty;
-                var result = new StringBuilder();
-                for (int current = start; current < next; current++) {
-                    if (current < next - 1 && input[current] == '\\') continue;
-                    result.Append(input[current]);
-                }
-                return result.ToString();
-            }
-        }
+        public string Content { get { return current.ToString(); } }
 
         public Characters(string input) {
-            this.input = input.Replace("\r", string.Empty);
-            next = -1;
-            length = 1;
+            current = new Substring(input.Replace("\r", string.Empty), 0, 0);
             MoveNext();
         }
 
-        public void Start() {
-            start = next;
-        }
-
         public void MoveNext() {
-            next += length;
-            if (next >= input.Length) {
-                length = 0;
-                Type = CharacterType.End;
+            current = current.After;
+            if (current.AtEnd) {
+                return;
+            }
+            if (current.StartsWith("\\")) {
+                Type = CharacterType.Letter;
+                current = current.Skip(1).Truncate(1);
+            }
+            else if (current.StartsWith("[\n")) {
+                Type = CharacterType.BeginCell;
+                current = current.Truncate(2);
+            }
+            else if (current.StartsWith("\n]")) {
+                Type = CharacterType.EndCell;
+                current = current.Truncate(2);
+            }
+            else if (current.StartsWith("\n")) {
+                Type = CharacterType.Newline;
+                current = current.Truncate(1);
+            }
+            else if (current.StartsWith("\"") || current.StartsWith("'")) {
+                Type = CharacterType.Quote;
+                current = current.Truncate(1);
+            }
+            else if (current.StartsWith("|")) {
+                Type = CharacterType.Separator;
+                current = current.Truncate(1);
+            }
+            else if (current.StartsWith(TextStoryTestBegin, StringComparison.OrdinalIgnoreCase)) {
+                Type = CharacterType.BeginTest;
+                current = current.Truncate(5);
+            }
+            else if (current.StartsWith("@test", StringComparison.OrdinalIgnoreCase)) {
+                Type = CharacterType.EndTest;
+                current = current.Truncate(5);
+            }
+            else if (char.IsWhiteSpace(current[0])) {
+                Type = CharacterType.WhiteSpace;
+                current = current.Truncate(1);
+            }
+            else if (current.StartsWith("<br", StringComparison.OrdinalIgnoreCase)
+                && current.Contains(">")) {
+                Type = CharacterType.Newline;
+                current = current.TruncateAfter(">");
             }
             else {
-                length = 1;
-                if (next < input.Length - 1 && input[next] == '\\') {
-                    next++;
-                    Type = CharacterType.Letter;
-                }
-                else if (input[next] == '[' && next + 1 < input.Length && input[next+1] == '\n') {
-                    Type = CharacterType.BeginCell;
-                    length = 2;
-                }
-                else if (input[next] == '\n' && next + 1 < input.Length && input[next+1] == ']') {
-                    Type = CharacterType.EndCell;
-                    length = 2;
-                }
-                else if (input[next] == '\n') Type = CharacterType.Newline;
-                else if (char.IsWhiteSpace(input[next])) Type = CharacterType.WhiteSpace;
-                else if (input[next] == '"' || input[next] == '\'') Type = CharacterType.Quote;
-                else if (input[next] == '|') Type = CharacterType.Separator;
-                else if (string.Compare("<br", 0, input, next, 3, StringComparison.OrdinalIgnoreCase) == 0
-                    && input.IndexOf(">", next + 3, StringComparison.Ordinal) >= 0) {
-                    Type = CharacterType.Newline;
-                    length = input.IndexOf(">", next + 3, StringComparison.Ordinal) - next + 1;
-                }
-                else if (string.Compare(TextStoryTestBegin, 0, input, next, 5, StringComparison.OrdinalIgnoreCase) == 0) {
-                    Type = CharacterType.BeginTest;
-                    length = 5;
-                }
-                else if (string.Compare("@test", 0, input, next, 5, StringComparison.OrdinalIgnoreCase) == 0) {
-                    Type = CharacterType.EndTest;
-                    length = 5;
-                }
-                else Type = CharacterType.Letter;
+                Type = CharacterType.Letter;
+                current = current.Truncate(1);
             }
         }
 
-        public void MoveWhile(Func<bool> condition) { while (condition()) MoveNext(); }
+        public string Until(Func<bool> condition) {
+            var start = current;
+            while (!AtEnd && !condition()) MoveNext();
+            return FromPosition(start);
+        }
 
-        public bool IsLetterOrWhitespace { get { return Type == CharacterType.Letter || Type == CharacterType.WhiteSpace; } }
-        public bool IsLetter { get { return Type == CharacterType.Letter; } }
+        string FromPosition(Substring start) {
+            var from = start.Truncate(current).ToString();
+            var result = new StringBuilder();
+            for (var index = 0; index < from.Length; index++) {
+                if (index < from.Length - 1 && from[index] == '\\') index++;
+                result.Append(from[index]);
+            }
+            return result.ToString();
+        }
     }
 }

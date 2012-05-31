@@ -285,5 +285,10 @@ namespace dbfit
 		 {
 			 get { return "@";}
 		 }
+
+        protected override string BuildColumnName(string sourceColumnName)
+        {
+            return "[" + sourceColumnName + "]";
+        }
     }
 }
